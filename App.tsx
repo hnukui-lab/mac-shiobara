@@ -10,6 +10,7 @@ import {
   ContactSection 
 } from './components/GeneratedSite';
 import { AIChatWidget } from './components/LoadingScreen';
+import { DrawingAnalyzer } from './components/DrawingAnalyzer';
 
 const Logo = ({ isScrolled, isDarkBg }: { isScrolled: boolean, isDarkBg: boolean }) => (
   <div className="flex items-center group cursor-pointer">
@@ -26,8 +27,8 @@ const Logo = ({ isScrolled, isDarkBg }: { isScrolled: boolean, isDarkBg: boolean
 const App: React.FC = () => {
   const [isScrolled, setIsScrolled] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  // Simple state-based router: 'home' or 'company'
-  const [currentPage, setCurrentPage] = useState<'home' | 'company'>('home');
+  // Simple state-based router: 'home', 'company' or 'analyzer'
+  const [currentPage, setCurrentPage] = useState<'home' | 'company' | 'analyzer'>('home');
 
   // Handle scroll effect for navbar
   useEffect(() => {
@@ -41,9 +42,9 @@ const App: React.FC = () => {
   const handleNavigation = (destination: string) => {
     setIsMenuOpen(false);
 
-    // Navigate to Company Page
-    if (destination === 'company') {
-      setCurrentPage('company');
+    // Navigate to Company / Drawing Analyzer Page
+    if (destination === 'company' || destination === 'analyzer') {
+      setCurrentPage(destination);
       window.scrollTo(0, 0);
       return;
     }
@@ -72,7 +73,7 @@ const App: React.FC = () => {
   };
 
   const NavLink = ({ target, label }: { target: string, label: string }) => {
-    const isActive = (target === 'company' && currentPage === 'company');
+    const isActive = (target === 'company' || target === 'analyzer') && target === currentPage;
     
     return (
       <button 
@@ -119,6 +120,7 @@ const App: React.FC = () => {
             <NavLink target="施工実績" label="施工実績" />
             <NavLink target="company" label="会社概要" />
             <NavLink target="採用情報" label="採用情報" />
+            <NavLink target="analyzer" label="図面解析" />
             <button 
               onClick={() => handleNavigation('contact')}
               className="bg-green-600 hover:bg-green-700 text-white px-5 py-2 rounded-sm font-bold text-sm transition-all hover:shadow-lg hover:-translate-y-0.5"
@@ -144,6 +146,7 @@ const App: React.FC = () => {
             <NavLink target="施工実績" label="施工実績" />
             <NavLink target="company" label="会社概要" />
             <NavLink target="採用情報" label="採用情報" />
+            <NavLink target="analyzer" label="図面解析" />
             <NavLink target="contact" label="Contact" />
           </div>
         )}
@@ -158,9 +161,13 @@ const App: React.FC = () => {
           <CareersSection />
           <ContactSection />
         </>
-      ) : (
+      ) : currentPage === 'company' ? (
         <div className="min-h-screen bg-slate-900 pt-20 animate-fade-in">
            <CompanySection />
+        </div>
+      ) : (
+        <div className="min-h-screen bg-slate-900 pt-20 animate-fade-in">
+           <DrawingAnalyzer />
         </div>
       )}
       
