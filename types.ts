@@ -16,3 +16,34 @@ export interface Project {
   category: string;
   image: string;
 }
+
+export interface DrawingDimension {
+  label: string;
+  value: string;
+}
+
+export interface DrawingMaterial {
+  name: string;
+  spec: string;
+  finish: string;
+}
+
+export interface DrawingPart {
+  name: string;
+  quantity: string;
+  size: string;
+  material: string;
+  note: string;
+}
+
+export interface DrawingAnalysis {
+  title: string;
+  drawingType: string;
+  scale: string;
+  summary: string;
+  dimensions: DrawingDimension[];
+  materials: DrawingMaterial[];
+  parts: DrawingPart[];
+  notes: string[];
+  checkpoints: string[];
+}
