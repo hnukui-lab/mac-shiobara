@@ -264,7 +264,7 @@
     const curEx = EX_BY_ID[cur.id];
     const inDay = new Set(day.exercises.map((e) => e.id));
     const pool = poolFor(cur.part, state.profile, 0).filter((e) => !inDay.has(e.id));
-    if (!pool.length) { alert('入れ替えられる種目がありません'); return; }
+    if (!pool.length) { notify('入れ替えられる種目がありません'); return; }
     const sameType = pool.filter((e) => e.c === curEx.c);
     const next = (sameType.length ? sameType : pool)[0];
     day.exercises[exIdx] = Object.assign({ id: next.id, part: cur.part }, prescribe(next, state.profile));
@@ -308,7 +308,10 @@
   }
 
   function startSession(session, title) {
-    if (state.active && !confirm('記録中のトレーニングがあります。破棄して新しく始めますか？')) return;
+    if (state.active) {
+      askConfirm('記録中のトレーニングがあります。破棄して新しく始めますか？', () => { state.active = null; startSession(session, title); }, '破棄して始める');
+      return;
+    }
     state.active = {
       date: today(),
       title,
@@ -327,6 +330,34 @@
     render();
     window.scrollTo(0, 0);
   }
+
+  // ---------- ダイアログ(alert/confirmが使えない環境向けに画面内で表示) ----------
+  function showModal(html, onReady) {
+    closeModal();
+    const wrap = document.createElement('div');
+    wrap.className = 'modal-back';
+    wrap.id = 'modal';
+    wrap.innerHTML = '<div class="modal" role="dialog" aria-modal="true">' + html + '</div>';
+    document.body.appendChild(wrap);
+    if (onReady) onReady(wrap);
+    const btn = wrap.querySelector('[data-modal-focus]') || wrap.querySelector('button');
+    if (btn) btn.focus();
+  }
+  function closeModal() {
+    const m = document.getElementById('modal');
+    if (m) m.remove();
+  }
+  function notify(msg) {
+    showModal('<p>' + esc(msg) + '</p><div class="modal-actions"><button class="btn primary" data-modal="close">OK</button></div>');
+  }
+  function askConfirm(msg, onYes, yesLabel) {
+    showModal('<p>' + esc(msg) + '</p><div class="modal-actions"><button class="btn ghost" data-modal="close">キャンセル</button><button class="btn primary" data-modal="yes" data-modal-focus>' + esc(yesLabel || 'OK') + '</button></div>',
+      (wrap) => { wrap.querySelector('[data-modal="yes"]').addEventListener('click', () => { closeModal(); onYes(); }); });
+  }
+  document.addEventListener('click', (ev) => {
+    if (ev.target.closest('[data-modal="close"]') || ev.target.id === 'modal') closeModal();
+  });
+  document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') closeModal(); });
 
   // ---------- 描画 ----------
   const app = document.getElementById('app');
@@ -709,8 +740,9 @@
       <section class="card"><h3>データ</h3>
         <p class="muted small">データはこの端末のブラウザに保存されています。機種変更やブラウザ変更の前にはバックアップしてください。</p>
         <div class="row-btns">
-          <button class="btn ghost" data-action="export">バックアップを保存</button>
-          <label class="btn ghost">バックアップから復元<input type="file" accept="application/json" data-import hidden></label>
+          <button class="btn ghost" data-action="export">バックアップを作成</button>
+          <button class="btn ghost" data-action="import-paste">バックアップから復元</button>
+          <label class="btn ghost">ファイルから復元<input type="file" accept="application/json,.json" data-import hidden></label>
         </div>
         <button class="btn danger" data-action="reset">すべてのデータを削除</button>
       </section>`;
@@ -766,7 +798,7 @@
       case 'quick-build':
       case 'quick-reroll': {
         const q = ui.quick;
-        if (!q.parts.length) { alert('部位を1つ以上選んでください'); break; }
+        if (!q.parts.length) { notify('部位を1つ以上選んでください'); break; }
         q.variant = a === 'quick-reroll' ? q.variant + 1 : 0;
         const parts = PART_KEYS.filter((k) => q.parts.includes(k));
         q.result = buildSession(parts, { profile: state.profile, minutes: q.minutes, focus: [], variant: q.variant });
@@ -785,20 +817,23 @@
       }
       case 'set-remove': state.active.entries[Number(d.ei)].sets.pop(); save(); render(); break;
       case 'active-discard':
-        if (confirm('記録中の内容を破棄しますか？')) { state.active = null; save(); render(); }
+        askConfirm('記録中の内容を破棄しますか？', () => { state.active = null; save(); render(); }, '破棄する');
         break;
       case 'active-save': {
         const act = state.active;
         const entries = act.entries.map((e) => ({ id: e.id, sets: e.sets.filter((s) => s.done || s.r !== '') .map((s) => ({ w: s.w, r: s.r })) })).filter((e) => e.sets.length);
-        if (!entries.length && !confirm('入力されたセットがありません。それでも保存しますか？')) break;
-        state.logs.unshift({ date: act.date, title: act.title, entries, note: act.note });
-        state.logs.sort((x, y) => (x.date < y.date ? 1 : x.date > y.date ? -1 : 0));
-        state.active = null; ui.openLog = null; save(); render(); window.scrollTo(0, 0);
+        const doSave = () => {
+          state.logs.unshift({ date: act.date, title: act.title, entries, note: act.note });
+          state.logs.sort((x, y) => (x.date < y.date ? 1 : x.date > y.date ? -1 : 0));
+          state.active = null; ui.openLog = null; save(); render(); window.scrollTo(0, 0);
+        };
+        if (!entries.length) askConfirm('入力されたセットがありません。それでも保存しますか？', doSave, '保存する');
+        else doSave();
         break;
       }
       case 'toggle-log': ui.openLog = ui.openLog === Number(d.li) ? null : Number(d.li); render(); break;
       case 'delete-log':
-        if (confirm('この記録を削除しますか？')) { state.logs.splice(Number(d.li), 1); ui.openLog = null; save(); render(); }
+        askConfirm('この記録を削除しますか？', () => { state.logs.splice(Number(d.li), 1); ui.openLog = null; save(); render(); }, '削除する');
         break;
 
       case 'meal-date': ui.mealDate = shiftDate(ui.mealDate, Number(d.d)); render(); break;
@@ -811,13 +846,13 @@
         break;
       }
       case 'custom-del':
-        if (confirm('マイ食品から削除しますか？')) { state.customFoods.splice(Number(d.ci), 1); save(); render(); }
+        askConfirm('マイ食品から削除しますか？', () => { state.customFoods.splice(Number(d.ci), 1); save(); render(); }, '削除する');
         break;
       case 'manual-add': {
         const get = (k) => app.querySelector(`[data-manual="${k}"]`).value;
         const name = get('name').trim();
         const kcal = num(get('kcal'));
-        if (!name || kcal === null) { alert('名前とカロリーを入力してください'); break; }
+        if (!name || kcal === null) { notify('名前とカロリーを入力してください'); break; }
         const food = { name, unit: '1食', kcal, p: num(get('p')) || 0, f: num(get('f')) || 0, c: num(get('c')) || 0 };
         if (app.querySelector('[data-manual-save]').checked && !state.customFoods.some((x) => x.name === name)) state.customFoods.unshift(food);
         const qty = Number(app.querySelector('[data-qty]').value) || 1;
@@ -829,7 +864,7 @@
       case 'w-add': {
         const date = app.querySelector('[data-w-date]').value || today();
         const kg = num(app.querySelector('[data-w-kg]').value);
-        if (!kg || kg < 25 || kg > 250) { alert('体重を正しく入力してください'); break; }
+        if (!kg || kg < 25 || kg > 250) { notify('体重を正しく入力してください(25〜250kg)'); break; }
         state.weights = state.weights.filter((x) => x.date !== date);
         state.weights.push({ date, kg });
         save(); render(); break;
@@ -838,18 +873,43 @@
         state.weights = state.weights.filter((x) => x.date !== d.date); save(); render(); break;
 
       case 'export': {
-        const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
-        const link = document.createElement('a');
-        link.href = URL.createObjectURL(blob);
-        link.download = 'fitness-backup-' + today() + '.json';
-        link.click();
-        setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+        const json = JSON.stringify(state);
+        showModal('<h3>バックアップ</h3><p class="small">下の文字列をコピーして、メモアプリなどに保存してください。復元するときは「バックアップから復元」に貼り付けます。</p>' +
+          '<textarea id="backup-text" rows="6" readonly>' + esc(json) + '</textarea>' +
+          '<div class="modal-actions"><button class="btn ghost" data-modal="close">閉じる</button><button class="btn ghost" data-backup="file">ファイルで保存</button><button class="btn primary" data-backup="copy" data-modal-focus>コピー</button></div>',
+          (wrap) => {
+            const ta = wrap.querySelector('#backup-text');
+            wrap.querySelector('[data-backup="copy"]').addEventListener('click', (e) => {
+              const b = e.currentTarget;
+              const done = () => { b.textContent = 'コピーしました'; };
+              const fallback = () => { ta.focus(); ta.select(); b.textContent = '選択しました。長押しでコピー'; };
+              try { navigator.clipboard.writeText(json).then(done, fallback); } catch (err) { fallback(); }
+            });
+            wrap.querySelector('[data-backup="file"]').addEventListener('click', () => {
+              const link = document.createElement('a');
+              link.href = URL.createObjectURL(new Blob([json], { type: 'application/json' }));
+              link.download = 'fitness-backup-' + today() + '.json';
+              link.click();
+              setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+            });
+          });
         break;
       }
+      case 'import-paste':
+        showModal('<h3>バックアップから復元</h3><p class="small">保存しておいたバックアップの文字列を貼り付けてください。現在のデータは上書きされます。</p>' +
+          '<textarea id="restore-text" rows="6"></textarea><p class="error small" id="restore-err" hidden>バックアップを読み込めませんでした。文字列全体を貼り付けたか確認してください。</p>' +
+          '<div class="modal-actions"><button class="btn ghost" data-modal="close">キャンセル</button><button class="btn primary" data-restore>復元する</button></div>',
+          (wrap) => {
+            wrap.querySelector('[data-restore]').addEventListener('click', () => {
+              if (restoreFrom(wrap.querySelector('#restore-text').value)) closeModal();
+              else wrap.querySelector('#restore-err').hidden = false;
+            });
+          });
+        break;
       case 'reset':
-        if (confirm('プロフィール・記録・食事など、すべてのデータを削除します。よろしいですか？')) {
+        askConfirm('プロフィール・記録・食事など、すべてのデータを削除します。よろしいですか？', () => {
           state = defaultState(); save(); ui.ob = null; ui.obStep = 0; ui.tab = 'menu'; render();
-        }
+        }, 'すべて削除');
         break;
     }
   });
@@ -883,16 +943,23 @@
     if (t.hasAttribute('data-import') && t.files[0]) {
       const reader = new FileReader();
       reader.onload = () => {
-        try {
-          const data = JSON.parse(reader.result);
-          if (!data || typeof data !== 'object' || !('profile' in data)) throw new Error('invalid');
-          if (!confirm('現在のデータを上書きして復元しますか？')) return;
-          state = Object.assign(defaultState(), data); save(); ui.tab = 'menu'; render();
-        } catch (e) { alert('バックアップファイルを読み込めませんでした'); }
+        askConfirm('現在のデータを上書きして復元しますか？', () => {
+          if (!restoreFrom(reader.result)) notify('バックアップファイルを読み込めませんでした');
+        }, '復元する');
       };
       reader.readAsText(t.files[0]);
+      t.value = '';
     }
   });
+
+  function restoreFrom(text) {
+    try {
+      const data = JSON.parse(text);
+      if (!data || typeof data !== 'object' || !('profile' in data)) return false;
+      state = Object.assign(defaultState(), data); save(); ui.ob = null; ui.tab = 'menu'; render();
+      return true;
+    } catch (e) { return false; }
+  }
 
   render();
 })();
